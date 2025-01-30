@@ -4,5 +4,5 @@ streamlit_calendar
 streamlit_echarts
 streamlit_extras
 fpdf
-PIL
+pillow
 docx

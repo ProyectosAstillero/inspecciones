@@ -5,4 +5,4 @@ streamlit_echarts
 streamlit_extras
 fpdf
 pillow
-docx
+python-docx

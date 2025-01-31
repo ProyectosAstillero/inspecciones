@@ -3,12 +3,16 @@ import pandas as pd
 import os
 from datetime import datetime
 from openpyxl import load_workbook
-from io import BytesIO
 from fpdf import FPDF
 from PIL import Image
-from docx import Document
 
-# Interfaz para ingresar el nombre del proyecto
+# Ruta del archivo Excel
+BD = './DATA.xlsx'
+
+# Cargar actividades iniciales si existen
+df_ACTIVIDADES = pd.read_excel(BD, sheet_name="DATA")
+
+# Configuración del Proyecto
 st.sidebar.header("Configuración del Proyecto")
 PROJECT_NAME = st.sidebar.text_input("Nombre del Proyecto", "MiProyecto")
 
@@ -18,42 +22,35 @@ EXCEL_FILE = os.path.join(PROJECT_NAME, "actividades.xlsx")
 # Crear carpetas si no existen
 os.makedirs(IMAGE_FOLDER, exist_ok=True)
 
-# Cargar o crear archivo Excel
 def load_or_create_excel():
     if not os.path.exists(EXCEL_FILE):
         df = pd.DataFrame(columns=["Fecha", "Actividad", "Descripción", "Imagenes"])
-        with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='w') as writer:
-            df.to_excel(writer, index=False)
+        df.to_excel(EXCEL_FILE, index=False)
     return pd.read_excel(EXCEL_FILE)
+
+def generate_unique_filename(original_name):
+    """Genera un nombre único para la imagen basada en la fecha y hora"""
+    name, ext = os.path.splitext(original_name)
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    return f"{name}_{timestamp}{ext}"
 
 def save_data(actividad, descripcion, image_files):
     df = load_or_create_excel()
-    
-    # Buscar si la actividad ya existe en el DataFrame
     existing_activity = df[df["Actividad"] == actividad]
-    
-    image_paths = []
-    
-    # Si la actividad ya existe, agregar imágenes a las existentes
-    if not existing_activity.empty:
-        # Obtener las imágenes existentes para esa actividad
-        existing_images = existing_activity["Imagenes"].values[0]
-        if existing_images:
-            image_paths = existing_images.split(", ")
 
-    # Verificar si se han cargado imágenes y guardarlas
+    image_paths = existing_activity["Imagenes"].values[0].split(", ") if not existing_activity.empty and isinstance(existing_activity["Imagenes"].values[0], str) else []
+
     if image_files:
         for image_file in image_files:
-            if image_file is not None:  # Verificar que el archivo no sea None
-                image_path = os.path.relpath(os.path.join(IMAGE_FOLDER, image_file.name))
+            if image_file is not None:
+                unique_name = generate_unique_filename(image_file.name)
+                image_path = os.path.relpath(os.path.join(IMAGE_FOLDER, unique_name))
                 with open(image_path, "wb") as f:
                     f.write(image_file.getbuffer())
                 image_paths.append(image_path)
 
-    # Convertir las rutas de las imágenes en una cadena separada por comas
     images_string = ", ".join(image_paths) if image_paths else ""
-    
-    # Si la actividad ya existe, actualizamos la fila, si no, agregamos una nueva
+
     if not existing_activity.empty:
         df.loc[df["Actividad"] == actividad, "Imagenes"] = images_string
     else:
@@ -64,23 +61,22 @@ def save_data(actividad, descripcion, image_files):
             "Imagenes": [images_string]
         })
         df = pd.concat([df, new_data], ignore_index=True)
-    
-    # Guardar el DataFrame actualizado en el archivo Excel
-    with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='w') as writer:
-        df.to_excel(writer, index=False)
 
-# Interfaz con Streamlit
+    df.to_excel(EXCEL_FILE, index=False)
+
 st.title("Registro de Actividades")
 actividad = st.text_input("Nombre de la actividad")
 descripcion = st.text_area("Descripción")
 
-# Opción para subir varias imágenes
+# Subir imágenes
 image_files = st.file_uploader("Subir imágenes", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="file_uploader")
 
-# Opción para capturar imágenes desde la cámara
+# Capturar imágenes con cámara
 use_camera = st.checkbox("Tomar fotos desde la cámara")
 if use_camera:
-    image_files = [st.camera_input("Captura de cámara")]
+    camera_image = st.camera_input("Captura de cámara")
+    if camera_image:
+        image_files = image_files + [camera_image] if image_files else [camera_image]
 
 if st.button("Guardar"):
     if actividad and descripcion:
@@ -89,80 +85,61 @@ if st.button("Guardar"):
     else:
         st.warning("Por favor, completa todos los campos.")
 
-# Mostrar datos en un expander
+# Mostrar actividades registradas
 with st.expander("Ver actividades registradas"):
     df = load_or_create_excel()
+    st.dataframe(df.drop(columns=["Imagenes"]), use_container_width=True)
 
-    # Preparar la columna de imágenes (mostrar las imágenes de la ruta almacenada)
-    def render_images(images_string):
-        images = images_string.split(", ")
-        return "".join([f'<img src="{img}" width="100" />' for img in images if img and os.path.exists(img)])
+    for index, row in df.iterrows():
+        st.write(f"### {row['Actividad']}")
+        st.write(f"**Descripción:** {row['Descripción']}")
+        if isinstance(row["Imagenes"], str):
+            images = row["Imagenes"].split(", ")
+            for img_path in images:
+                if os.path.exists(img_path):
+                    st.image(img_path, width=200)
+                else:
+                    st.write(f"Imagen no encontrada: {img_path}")
 
-    # Mostrar el dataframe sin la columna de imagen, pero con las imágenes renderizadas
-    st.dataframe(df.drop(columns=["Imagenes"]).style.format({"Imagenes": lambda x: render_images(x)}), use_container_width=True)
-
-from fpdf import FPDF
-import os
-
-# Función para generar el informe en PDF
+# Generar Informe PDF
 def generate_pdf():
-    # Cargar el archivo Excel
     df = load_or_create_excel()
-    
-    # Crear objeto PDF
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Título con el nombre del proyecto
     pdf.set_font('Arial', 'B', 16)
     pdf.cell(200, 10, txt=f"Informe del Proyecto: {PROJECT_NAME}", ln=True, align='C')
-    pdf.ln(10)  # Salto de línea
+    pdf.ln(10)
 
-    # Configuración de la fuente para las actividades
     pdf.set_font('Arial', '', 12)
-
-    # Iterar sobre las actividades
     for _, row in df.iterrows():
-        actividad = row["Actividad"]
-        descripcion = row["Descripción"]
-        imagenes = row["Imagenes"].split(", ")
-
-        # Título de la actividad
         pdf.set_font('Arial', 'B', 14)
-        pdf.cell(200, 10, txt=f"Actividad: {actividad}", ln=True)
+        pdf.cell(200, 10, txt=f"Actividad: {row['Actividad']}", ln=True)
 
-        # Descripción de la actividad
         pdf.set_font('Arial', '', 12)
-        pdf.multi_cell(0, 10, txt=f"Descripción: {descripcion}")
+        pdf.multi_cell(0, 10, txt=f"Descripción: {row['Descripción']}")
         pdf.ln(5)
 
-        # Insertar las imágenes (si hay)
+        imagenes = row["Imagenes"].split(", ") if isinstance(row["Imagenes"], str) else []
         for image_path in imagenes:
             if os.path.exists(image_path):
-                # Asegúrate de que la imagen esté en un tamaño adecuado para el PDF
                 img = Image.open(image_path)
                 img_width, img_height = img.size
                 aspect_ratio = img_height / img_width
-                new_width = 100  # Ancho máximo de la imagen
+                new_width = 100
                 new_height = new_width * aspect_ratio
-
-                # Convertir la imagen a formato JPEG si es necesario
-                if image_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    pdf.image(image_path, w=new_width, h=new_height)
-                    pdf.ln(new_height + 5)  # Dejar espacio después de la imagen
+                pdf.image(image_path, w=new_width, h=new_height)
+                pdf.ln(new_height + 5)
             else:
                 pdf.cell(200, 10, txt=f"Imagen no encontrada: {image_path}", ln=True)
-        
-        pdf.ln(5)  # Salto de línea después de cada actividad
 
-    # Guardar el PDF en un archivo
+        pdf.ln(5)
+
     pdf_output = os.path.join(PROJECT_NAME, f"Informe_{PROJECT_NAME}.pdf")
     pdf.output(pdf_output)
-
     return pdf_output
 
-# Botón en Streamlit para generar el informe PDF
 if st.button("Generar Informe PDF"):
     pdf_file = generate_pdf()
     st.success(f"Informe PDF generado: {pdf_file}")

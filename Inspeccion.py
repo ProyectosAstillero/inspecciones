@@ -1,175 +1,187 @@
 import streamlit as st
-import pandas as pd
 import os
+import pandas as pd
 import zipfile
 from datetime import datetime
-from openpyxl import load_workbook
 from fpdf import FPDF
 from PIL import Image
 from io import BytesIO
-# Ruta del archivo Excel
-BD = './DATA.xlsx'
 
-# Cargar actividades iniciales si existen
-df_ACTIVIDADES = pd.read_excel(BD, sheet_name="DATA")
+# Definir carpeta base donde se almacenan los proyectos
+BASE_DIR = "./"
 
-# Configuración del Proyecto
-st.sidebar.header("Configuración del Proyecto")
-PROJECT_NAME = st.sidebar.text_input("Nombre del Proyecto", "MiProyecto")
+def get_saved_projects():
+    """Obtiene una lista de carpetas que representan proyectos guardados"""
+    return [f for f in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, f)) and f != "__pycache__"]
 
-IMAGE_FOLDER = os.path.join(PROJECT_NAME, "imagenes")
-EXCEL_FILE = os.path.join(PROJECT_NAME, "actividades.xlsx")
-
-# Crear carpetas si no existen
-os.makedirs(IMAGE_FOLDER, exist_ok=True)
-
-def load_or_create_excel():
-    if not os.path.exists(EXCEL_FILE):
+def load_or_create_excel(excel_file):
+    """Carga o crea un archivo Excel para almacenar actividades"""
+    if not os.path.exists(excel_file):
         df = pd.DataFrame(columns=["Fecha", "Actividad", "Descripción", "Imagenes"])
-        df.to_excel(EXCEL_FILE, index=False)
-    return pd.read_excel(EXCEL_FILE)
+        df.to_excel(excel_file, index=False)
+    return pd.read_excel(excel_file)
 
-# Función para generar un archivo ZIP con imágenes y Excel
-def create_zip():
-    zip_filename = os.path.join(PROJECT_NAME, f"{PROJECT_NAME}_data.zip")
-    
-    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Agregar el archivo Excel al ZIP
-        if os.path.exists(EXCEL_FILE):
-            zipf.write(EXCEL_FILE, os.path.basename(EXCEL_FILE))
-        
-        # Agregar todas las imágenes al ZIP
-        for root, _, files in os.walk(IMAGE_FOLDER):
-            for file in files:
-                file_path = os.path.join(root, file)
-                zipf.write(file_path, os.path.relpath(file_path, PROJECT_NAME))
-
-    return zip_filename
-
-def generate_unique_filename(original_name):
-    """Genera un nombre único para la imagen basada en la fecha y hora"""
-    name, ext = os.path.splitext(original_name)
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    return f"{name}_{timestamp}{ext}"
-
-def save_data(actividad, descripcion, image_files):
-    df = load_or_create_excel()
-    existing_activity = df[df["Actividad"] == actividad]
-
-    image_paths = existing_activity["Imagenes"].values[0].split(", ") if not existing_activity.empty and isinstance(existing_activity["Imagenes"].values[0], str) else []
-
-    if image_files:
-        for image_file in image_files:
-            if image_file is not None:
-                unique_name = generate_unique_filename(image_file.name)
-                image_path = os.path.relpath(os.path.join(IMAGE_FOLDER, unique_name))
-                with open(image_path, "wb") as f:
-                    f.write(image_file.getbuffer())
-                image_paths.append(image_path)
-
-    images_string = ", ".join(image_paths) if image_paths else ""
-
-    if not existing_activity.empty:
-        df.loc[df["Actividad"] == actividad, "Imagenes"] = images_string
-    else:
-        new_data = pd.DataFrame({
-            "Fecha": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            "Actividad": [actividad],
-            "Descripción": [descripcion],
-            "Imagenes": [images_string]
-        })
-        df = pd.concat([df, new_data], ignore_index=True)
-
-    df.to_excel(EXCEL_FILE, index=False)
-
-st.title("Registro de Actividades")
-actividad = st.text_input("Nombre de la actividad")
-descripcion = st.text_area("Descripción")
-
-# Subir imágenes
-image_files = st.file_uploader("Subir imágenes", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="file_uploader")
-
-# Capturar imágenes con cámara
-use_camera = st.checkbox("Tomar fotos desde la cámara")
-if use_camera:
-    camera_image = st.camera_input("Captura de cámara")
-    if camera_image:
-        image_files = image_files + [camera_image] if image_files else [camera_image]
-
-if st.button("Guardar"):
-    if actividad and descripcion:
-        save_data(actividad, descripcion, image_files)
-        st.success("Actividad guardada correctamente!")
-    else:
-        st.warning("Por favor, completa todos los campos.")
-
-# Mostrar actividades registradas
-with st.expander("Ver actividades registradas"):
-    df = load_or_create_excel()
-    st.dataframe(df.drop(columns=["Imagenes"]), use_container_width=True)
-
-    for index, row in df.iterrows():
-        st.write(f"### {row['Actividad']}")
-        st.write(f"**Descripción:** {row['Descripción']}")
-        if isinstance(row["Imagenes"], str):
-            images = row["Imagenes"].split(", ")
-            for img_path in images:
-                if os.path.exists(img_path):
-                    st.image(img_path, width=200)
-                else:
-                    st.write(f"Imagen no encontrada: {img_path}")
-
-# Generar Informe PDF
-def generate_pdf():
-    df = load_or_create_excel()
+def generate_pdf(project_name, df, image_folder):
+    """Genera un PDF con la información del proyecto"""
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
+    # Título
     pdf.set_font('Arial', 'B', 16)
-    pdf.cell(200, 10, txt=f"Informe del Proyecto: {PROJECT_NAME}", ln=True, align='C')
+    pdf.cell(200, 10, txt=f"Informe del Proyecto: {project_name}", ln=True, align='C')
     pdf.ln(10)
 
+    # Contenido
     pdf.set_font('Arial', '', 12)
+
     for _, row in df.iterrows():
         pdf.set_font('Arial', 'B', 14)
         pdf.cell(200, 10, txt=f"Actividad: {row['Actividad']}", ln=True)
-
         pdf.set_font('Arial', '', 12)
         pdf.multi_cell(0, 10, txt=f"Descripción: {row['Descripción']}")
         pdf.ln(5)
 
-        imagenes = row["Imagenes"].split(", ") if isinstance(row["Imagenes"], str) else []
-        for image_path in imagenes:
-            if os.path.exists(image_path):
-                img = Image.open(image_path)
-                img_width, img_height = img.size
-                aspect_ratio = img_height / img_width
-                new_width = 100
-                new_height = new_width * aspect_ratio
-                pdf.image(image_path, w=new_width, h=new_height)
-                pdf.ln(new_height + 5)
-            else:
-                pdf.cell(200, 10, txt=f"Imagen no encontrada: {image_path}", ln=True)
-
-        pdf.ln(5)
-
-    pdf_output = os.path.join(PROJECT_NAME, f"Informe_{PROJECT_NAME}.pdf")
+        # Insertar imágenes
+        images = row["Imagenes"].split(", ")
+        for img_path in images:
+            img_path = img_path.strip()
+            full_path = os.path.join(image_folder, os.path.basename(img_path))
+            if os.path.exists(full_path):
+                pdf.image(full_path, w=80)
+                pdf.ln(5)
+    
+    pdf_output = os.path.join(BASE_DIR, project_name, f"Informe_{project_name}.pdf")
     pdf.output(pdf_output)
+
     return pdf_output
 
-if st.button("Generar Informe PDF"):
-    pdf_file = generate_pdf()
-    st.success(f"Informe PDF generado: {pdf_file}")
-    with open(pdf_file, "rb") as f:
-        st.download_button("Descargar Informe PDF", f, file_name=os.path.basename(pdf_file))
+def compress_project(project_name):
+    """Comprime el Excel y las imágenes del proyecto en un archivo ZIP"""
+    zip_filename = os.path.join(BASE_DIR, f"{project_name}.zip")
+    project_folder = os.path.join(BASE_DIR, project_name)
 
-
-
-# Botón para descargar ZIP con imágenes y Excel
-if st.button("Descargar ZIP con Datos e Imágenes"):
-    zip_path = create_zip()
-    st.success(f"Archivo ZIP generado: {zip_path}")
+    with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(project_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zipf.write(file_path, os.path.relpath(file_path, BASE_DIR))
     
-    with open(zip_path, "rb") as f:
-        st.download_button("Descargar ZIP", f, file_name=os.path.basename(zip_path))
+    return zip_filename
+
+# Crear pestañas en la aplicación
+tab1, tab2 = st.tabs(["📌 Añadir Actividades", "📂 Proyectos Guardados"])
+
+# 🔹 TAB 1: AÑADIR ACTIVIDADES
+with tab1:
+    st.title("Registro de Actividades")
+
+    # Configuración del Proyecto
+    st.sidebar.header("Configuración del Proyecto")
+    PROJECT_NAME = st.sidebar.text_input("Nombre del Proyecto")
+
+    PROJECT_CREATED = st.sidebar.button("📂 Crear Proyecto")
+
+    if PROJECT_CREATED and PROJECT_NAME.strip():
+        PROJECT_PATH = os.path.join(BASE_DIR, PROJECT_NAME)
+        IMAGE_FOLDER = os.path.join(PROJECT_PATH, "imagenes")
+        EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
+
+        os.makedirs(IMAGE_FOLDER, exist_ok=True)
+        load_or_create_excel(EXCEL_FILE)
+
+        st.sidebar.success(f"✅ Proyecto '{PROJECT_NAME}' creado exitosamente!")
+
+    elif PROJECT_CREATED:
+        st.sidebar.error("⚠️ Debes ingresar un nombre válido para el proyecto.")
+
+    # Solo permitir agregar actividades si el proyecto existe
+    if not PROJECT_NAME.strip() or not os.path.exists(os.path.join(BASE_DIR, PROJECT_NAME)):
+        st.warning("⚠️ Primero debes crear un proyecto desde la barra lateral.")
+    else:
+        PROJECT_PATH = os.path.join(BASE_DIR, PROJECT_NAME)
+        IMAGE_FOLDER = os.path.join(PROJECT_PATH, "imagenes")
+        EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
+
+        actividad = st.text_input("Nombre de la actividad")
+        descripcion = st.text_area("Descripción")
+
+        image_files = st.file_uploader("📤 Subir imágenes", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+
+        use_camera = st.checkbox("📸 Tomar foto con la cámara")
+        if use_camera:
+            camera_photo = st.camera_input("Captura de cámara")
+            if camera_photo:
+                image_files = image_files or []
+                image_files.append(camera_photo)
+
+        if st.button("Guardar"):
+            if actividad and descripcion:
+                df = load_or_create_excel(EXCEL_FILE)
+
+                image_paths = []
+                if image_files:
+                    for image_file in image_files:
+                        image_path = os.path.join(IMAGE_FOLDER, image_file.name)
+                        with open(image_path, "wb") as f:
+                            f.write(image_file.getbuffer())
+                        image_paths.append(image_path)
+
+                images_string = ", ".join(image_paths) if image_paths else ""
+
+                new_data = pd.DataFrame({
+                    "Fecha": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                    "Actividad": [actividad],
+                    "Descripción": [descripcion],
+                    "Imagenes": [images_string]
+                })
+                df = pd.concat([df, new_data], ignore_index=True)
+
+                df.to_excel(EXCEL_FILE, index=False)
+                st.success("✅ Actividad guardada correctamente!")
+            else:
+                st.warning("⚠️ Por favor, completa todos los campos.")
+# 🔹 TAB 2: PROYECTOS GUARDADOS
+with tab2:
+    st.title("📂 Proyectos Guardados")
+
+    projects = get_saved_projects()
+
+    if projects:
+        selected_project = st.selectbox("Selecciona un proyecto", projects)
+
+        st.write(f"## Proyecto: {selected_project}")
+
+        # Cargar el archivo Excel del proyecto seleccionado
+        excel_file = os.path.join(BASE_DIR, selected_project, "actividades.xlsx")
+        if os.path.exists(excel_file):
+            df = pd.read_excel(excel_file)
+            st.write("### Actividades Registradas")
+            st.dataframe(df.drop(columns=["Imagenes"]), use_container_width=True)
+
+        # Mostrar imágenes del proyecto
+        image_folder = os.path.join(BASE_DIR, selected_project, "imagenes")
+        if os.path.exists(image_folder):
+            st.write("### 📷 Imágenes del Proyecto")
+            images = [f for f in os.listdir(image_folder) if f.endswith(("png", "jpg", "jpeg"))]
+
+            for img in images:
+                img_path = os.path.join(image_folder, img)
+                st.image(img_path, caption=img, width=200)
+
+        # Botón para generar y descargar PDF
+        if st.button("📄 Generar Informe PDF"):
+            pdf_file = generate_pdf(selected_project, df, image_folder)
+            st.success(f"✅ Informe PDF generado: {pdf_file}")
+            with open(pdf_file, "rb") as f:
+                st.download_button("⬇️ Descargar Informe PDF", f, file_name=os.path.basename(pdf_file))
+
+        # Botón para descargar ZIP del proyecto
+        if st.button("📦 Descargar Proyecto (.zip)"):
+            zip_file = compress_project(selected_project)
+            st.success(f"✅ Archivo comprimido generado: {zip_file}")
+            with open(zip_file, "rb") as f:
+                st.download_button("⬇️ Descargar ZIP", f, file_name=os.path.basename(zip_file))
+
+    else:
+        st.write("⚠️ No hay proyectos guardados.")

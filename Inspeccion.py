@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import os
+import zipfile
 from datetime import datetime
 from openpyxl import load_workbook
 from fpdf import FPDF
 from PIL import Image
-
+from io import BytesIO
 # Ruta del archivo Excel
 BD = './DATA.xlsx'
 
@@ -27,6 +28,23 @@ def load_or_create_excel():
         df = pd.DataFrame(columns=["Fecha", "Actividad", "Descripción", "Imagenes"])
         df.to_excel(EXCEL_FILE, index=False)
     return pd.read_excel(EXCEL_FILE)
+
+# Función para generar un archivo ZIP con imágenes y Excel
+def create_zip():
+    zip_filename = os.path.join(PROJECT_NAME, f"{PROJECT_NAME}_data.zip")
+    
+    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # Agregar el archivo Excel al ZIP
+        if os.path.exists(EXCEL_FILE):
+            zipf.write(EXCEL_FILE, os.path.basename(EXCEL_FILE))
+        
+        # Agregar todas las imágenes al ZIP
+        for root, _, files in os.walk(IMAGE_FOLDER):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zipf.write(file_path, os.path.relpath(file_path, PROJECT_NAME))
+
+    return zip_filename
 
 def generate_unique_filename(original_name):
     """Genera un nombre único para la imagen basada en la fecha y hora"""
@@ -145,3 +163,13 @@ if st.button("Generar Informe PDF"):
     st.success(f"Informe PDF generado: {pdf_file}")
     with open(pdf_file, "rb") as f:
         st.download_button("Descargar Informe PDF", f, file_name=os.path.basename(pdf_file))
+
+
+
+# Botón para descargar ZIP con imágenes y Excel
+if st.button("Descargar ZIP con Datos e Imágenes"):
+    zip_path = create_zip()
+    st.success(f"Archivo ZIP generado: {zip_path}")
+    
+    with open(zip_path, "rb") as f:
+        st.download_button("Descargar ZIP", f, file_name=os.path.basename(zip_path))

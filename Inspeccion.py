@@ -6,14 +6,20 @@ from datetime import datetime
 from fpdf import FPDF
 from PIL import Image
 from io import BytesIO
-import shutil
 import send2trash
-# Definir carpeta base donde se almacenan los proyectos
+
+        # Definir carpetas base donde se almacenan los proyectos y archivos comprimidos
 BASE_DIR = "./"
+PROJECTS_DIR = os.path.join(BASE_DIR, "Proyecto")  # Carpeta donde se crearán los proyectos
+CACHE_DIR = os.path.join(BASE_DIR, "CACHE")  # Carpeta donde se almacenarán los archivos ZIP
+
+# Crear las carpetas si no existen
+os.makedirs(PROJECTS_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 def get_saved_projects():
     """Obtiene una lista de carpetas que representan proyectos guardados"""
-    return [f for f in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, f)) and f != "__pycache__"]
+    return [f for f in os.listdir(PROJECTS_DIR) if os.path.isdir(os.path.join(PROJECTS_DIR, f))]
 
 def load_or_create_excel(excel_file):
     """Carga o crea un archivo Excel para almacenar actividades"""
@@ -53,27 +59,27 @@ def generate_pdf(project_name, df, image_folder):
                 pdf.image(full_path, w=80)
                 pdf.ln(5)
     
-    pdf_output = os.path.join(BASE_DIR, project_name, f"Informe_{project_name}.pdf")
+    pdf_output = os.path.join(PROJECTS_DIR, project_name, f"Informe_{project_name}.pdf")
     pdf.output(pdf_output)
 
     return pdf_output
 
 def compress_project(project_name):
-    """Comprime el Excel y las imágenes del proyecto en un archivo ZIP"""
-    zip_filename = os.path.join(BASE_DIR, f"{project_name}.zip")
-    project_folder = os.path.join(BASE_DIR, project_name)
+    """Comprime el Excel y las imágenes del proyecto en un archivo ZIP dentro de CACHE"""
+    zip_filename = os.path.join(CACHE_DIR, f"{project_name}.zip")
+    project_folder = os.path.join(PROJECTS_DIR, project_name)
 
     with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(project_folder):
             for file in files:
                 file_path = os.path.join(root, file)
-                zipf.write(file_path, os.path.relpath(file_path, BASE_DIR))
+                zipf.write(file_path, os.path.relpath(file_path, PROJECTS_DIR))
     
     return zip_filename
 
 def delete_project(project_name):
     """Mueve un proyecto y todos sus archivos a la papelera"""
-    project_path = os.path.join(BASE_DIR, project_name)
+    project_path = os.path.join(PROJECTS_DIR, project_name)
     
     if os.path.exists(project_path):
         try:
@@ -89,7 +95,7 @@ def delete_project(project_name):
 # Crear una nueva pestaña para eliminar proyectos
 tab1, tab2, tab3 = st.tabs(["📌 Añadir Actividades", "📂 Proyectos Guardados", "🗑️ Eliminar Proyecto"])
 
-# 🔹 TAB 1: AÑADIR ACTIVIDADES (sin cambios)
+# 🔹 TAB 1: AÑADIR ACTIVIDADES
 with tab1:
     st.title("Registro de Actividades")
 
@@ -100,7 +106,7 @@ with tab1:
     PROJECT_CREATED = st.sidebar.button("📂 Crear Proyecto")
 
     if PROJECT_CREATED and PROJECT_NAME.strip():
-        PROJECT_PATH = os.path.join(BASE_DIR, PROJECT_NAME)
+        PROJECT_PATH = os.path.join(PROJECTS_DIR, PROJECT_NAME)  # Nueva ruta de proyectos
         IMAGE_FOLDER = os.path.join(PROJECT_PATH, "imagenes")
         EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
 
@@ -113,10 +119,10 @@ with tab1:
         st.sidebar.error("⚠️ Debes ingresar un nombre válido para el proyecto.")
 
     # Solo permitir agregar actividades si el proyecto existe
-    if not PROJECT_NAME.strip() or not os.path.exists(os.path.join(BASE_DIR, PROJECT_NAME)):
+    if not PROJECT_NAME.strip() or not os.path.exists(os.path.join(PROJECTS_DIR, PROJECT_NAME)):  # Actualizar ruta de proyecto
         st.warning("⚠️ Primero debes crear un proyecto desde la barra lateral.")
     else:
-        PROJECT_PATH = os.path.join(BASE_DIR, PROJECT_NAME)
+        PROJECT_PATH = os.path.join(PROJECTS_DIR, PROJECT_NAME)
         IMAGE_FOLDER = os.path.join(PROJECT_PATH, "imagenes")
         EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
 
@@ -173,14 +179,14 @@ with tab2:
         st.write(f"## Proyecto: {selected_project}")
 
         # Mostrar las actividades e imágenes del proyecto como antes
-        excel_file = os.path.join(BASE_DIR, selected_project, "actividades.xlsx")
+        excel_file = os.path.join(PROJECTS_DIR, selected_project, "actividades.xlsx")
         if os.path.exists(excel_file):
             df = pd.read_excel(excel_file)
             st.write("### Actividades Registradas")
             st.dataframe(df.drop(columns=["Imagenes"]), use_container_width=True)
 
         # Mostrar imágenes del proyecto
-        image_folder = os.path.join(BASE_DIR, selected_project, "imagenes")
+        image_folder = os.path.join(PROJECTS_DIR, selected_project, "imagenes")
         if os.path.exists(image_folder):
             st.write("### 📷 Imágenes del Proyecto")
             images = [f for f in os.listdir(image_folder) if f.endswith(("png", "jpg", "jpeg"))]
@@ -209,7 +215,7 @@ with tab2:
     else:
         st.write("⚠️ No hay proyectos guardados.")
 
-# 🔹 TAB 3: ELIMINAR PROYECTO
+# 🔹 TAB 3: ELIMINAR PROYECTO (sin cambios)
 with tab3:
     st.title("🗑️ Eliminar Proyecto")
 
@@ -231,3 +237,4 @@ with tab3:
                     st.error(f"⚠️ Error al eliminar el proyecto '{selected_project_to_delete}'.")
     else:
         st.write("⚠️ No hay proyectos para eliminar.")
+

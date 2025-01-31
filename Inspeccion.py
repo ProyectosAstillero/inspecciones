@@ -6,7 +6,8 @@ from datetime import datetime
 from fpdf import FPDF
 from PIL import Image
 from io import BytesIO
-
+import shutil
+import send2trash
 # Definir carpeta base donde se almacenan los proyectos
 BASE_DIR = "./"
 
@@ -18,6 +19,7 @@ def load_or_create_excel(excel_file):
     """Carga o crea un archivo Excel para almacenar actividades"""
     if not os.path.exists(excel_file):
         df = pd.DataFrame(columns=["Fecha", "Actividad", "Descripción", "Imagenes"])
+        df['Descripción'] = df['Descripción'].fillna("").astype(str)  # Reemplazar valores nulos con cadenas vacías
         df.to_excel(excel_file, index=False)
     return pd.read_excel(excel_file)
 
@@ -69,10 +71,25 @@ def compress_project(project_name):
     
     return zip_filename
 
-# Crear pestañas en la aplicación
-tab1, tab2 = st.tabs(["📌 Añadir Actividades", "📂 Proyectos Guardados"])
+def delete_project(project_name):
+    """Mueve un proyecto y todos sus archivos a la papelera"""
+    project_path = os.path.join(BASE_DIR, project_name)
+    
+    if os.path.exists(project_path):
+        try:
+            send2trash.send2trash(project_path)
+            return True
+        except Exception as e:
+            st.error(f"Error al mover el proyecto a la papelera: {e}")
+            return False
+    else:
+        st.warning(f"El proyecto '{project_name}' no existe.")
+        return False
 
-# 🔹 TAB 1: AÑADIR ACTIVIDADES
+# Crear una nueva pestaña para eliminar proyectos
+tab1, tab2, tab3 = st.tabs(["📌 Añadir Actividades", "📂 Proyectos Guardados", "🗑️ Eliminar Proyecto"])
+
+# 🔹 TAB 1: AÑADIR ACTIVIDADES (sin cambios)
 with tab1:
     st.title("Registro de Actividades")
 
@@ -112,8 +129,10 @@ with tab1:
         if use_camera:
             camera_photo = st.camera_input("Captura de cámara")
             if camera_photo:
-                image_files = image_files or []
+                image_files = image_files or []  # Asegura que image_files no sea None
                 image_files.append(camera_photo)
+            else:
+                st.warning("⚠️ No se ha capturado ninguna imagen.")
 
         if st.button("Guardar"):
             if actividad and descripcion:
@@ -141,7 +160,8 @@ with tab1:
                 st.success("✅ Actividad guardada correctamente!")
             else:
                 st.warning("⚠️ Por favor, completa todos los campos.")
-# 🔹 TAB 2: PROYECTOS GUARDADOS
+
+# 🔹 TAB 2: PROYECTOS GUARDADOS (sin cambios)
 with tab2:
     st.title("📂 Proyectos Guardados")
 
@@ -152,7 +172,7 @@ with tab2:
 
         st.write(f"## Proyecto: {selected_project}")
 
-        # Cargar el archivo Excel del proyecto seleccionado
+        # Mostrar las actividades e imágenes del proyecto como antes
         excel_file = os.path.join(BASE_DIR, selected_project, "actividades.xlsx")
         if os.path.exists(excel_file):
             df = pd.read_excel(excel_file)
@@ -165,9 +185,12 @@ with tab2:
             st.write("### 📷 Imágenes del Proyecto")
             images = [f for f in os.listdir(image_folder) if f.endswith(("png", "jpg", "jpeg"))]
 
-            for img in images:
+            # Mostrar imágenes en un grid
+            cols = st.columns(3)  # Puedes ajustar el número de columnas a tu preferencia
+            for i, img in enumerate(images):
                 img_path = os.path.join(image_folder, img)
-                st.image(img_path, caption=img, width=200)
+                with cols[i % 3]:  # Repartir las imágenes entre las columnas
+                    st.image(img_path, caption=img, use_container_width=True)
 
         # Botón para generar y descargar PDF
         if st.button("📄 Generar Informe PDF"):
@@ -185,3 +208,26 @@ with tab2:
 
     else:
         st.write("⚠️ No hay proyectos guardados.")
+
+# 🔹 TAB 3: ELIMINAR PROYECTO
+with tab3:
+    st.title("🗑️ Eliminar Proyecto")
+
+    # Lista de proyectos guardados
+    projects_to_delete = get_saved_projects()
+
+    if projects_to_delete:
+        selected_project_to_delete = st.selectbox("Selecciona un proyecto para eliminar", projects_to_delete)
+
+        st.write(f"## Proyecto seleccionado: {selected_project_to_delete}")
+
+        # Confirmación para eliminar
+        confirm_delete = st.checkbox(f"⚠️ ¿Estás seguro de eliminar el proyecto '{selected_project_to_delete}'?")
+        if confirm_delete:
+            if st.button("🗑️ Eliminar Proyecto"):
+                if delete_project(selected_project_to_delete):
+                    st.success(f"✅ Proyecto '{selected_project_to_delete}' eliminado con éxito.")
+                else:
+                    st.error(f"⚠️ Error al eliminar el proyecto '{selected_project_to_delete}'.")
+    else:
+        st.write("⚠️ No hay proyectos para eliminar.")

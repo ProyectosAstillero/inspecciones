@@ -6,3 +6,4 @@ streamlit_extras
 fpdf
 pillow
 python-docx
+send2trash

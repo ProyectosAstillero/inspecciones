@@ -51,7 +51,7 @@ def generate_pdf(project_name, df, image_folder):
         pdf.ln(5)
 
         # Insertar imágenes
-        images = row["Imagenes"].split(", ")
+        images = str(row["Imagenes"]).split(", ") if pd.notna(row["Imagenes"]) else []
         for img_path in images:
             img_path = img_path.strip()
             full_path = os.path.join(image_folder, os.path.basename(img_path))
@@ -63,6 +63,7 @@ def generate_pdf(project_name, df, image_folder):
     pdf.output(pdf_output)
 
     return pdf_output
+
 
 def compress_project(project_name):
     """Comprime el Excel y las imágenes del proyecto en un archivo ZIP dentro de CACHE"""
@@ -91,6 +92,8 @@ def delete_project(project_name):
     else:
         st.warning(f"El proyecto '{project_name}' no existe.")
         return False
+
+
 
 # Crear una nueva pestaña para eliminar proyectos
 tab1, tab2, tab3 = st.tabs(["📌 Añadir Actividades", "📂 Proyectos Guardados", "🗑️ Eliminar Proyecto"])
@@ -126,8 +129,10 @@ with tab1:
         IMAGE_FOLDER = os.path.join(PROJECT_PATH, "imagenes")
         EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
 
-        actividad = st.text_input("Nombre de la actividad")
-        descripcion = st.text_area("Descripción")
+        placeholder = st.empty()
+        placeholder2 = st.empty()
+        actividad = placeholder.text_input("Nombre de la actividad", key="Actividad")
+        descripcion = placeholder2.text_area("Descripción",key="Descripcion")
 
         image_files = st.file_uploader("📤 Subir imágenes", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
 
@@ -164,8 +169,13 @@ with tab1:
 
                 df.to_excel(EXCEL_FILE, index=False)
                 st.success("✅ Actividad guardada correctamente!")
+                
             else:
                 st.warning("⚠️ Por favor, completa todos los campos.")
+            
+            #Borrar valores
+            actividad = placeholder.text_input('Nombre de la actividad', value='', key=2)
+            descripcion = placeholder2.text_area('Descripción', value='', key=3)
 
 # 🔹 TAB 2: PROYECTOS GUARDADOS (sin cambios)
 with tab2:
@@ -237,4 +247,3 @@ with tab3:
                     st.error(f"⚠️ Error al eliminar el proyecto '{selected_project_to_delete}'.")
     else:
         st.write("⚠️ No hay proyectos para eliminar.")
-

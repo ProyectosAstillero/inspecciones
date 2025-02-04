@@ -12,11 +12,14 @@ import send2trash
 BASE_DIR = "./"
 PROJECTS_DIR = os.path.join(BASE_DIR, "Proyecto")  # Carpeta donde se crearán los proyectos
 CACHE_DIR = os.path.join(BASE_DIR, "CACHE")  # Carpeta donde se almacenarán los archivos ZIP
+BD = './DATA.xlsx'
+DATA =  pd.read_excel(BD, sheet_name="DATA")
 
 # Crear las carpetas si no existen
 os.makedirs(PROJECTS_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+#### FUNCIONES
 def get_saved_projects():
     """Obtiene una lista de carpetas que representan proyectos guardados"""
     return [f for f in os.listdir(PROJECTS_DIR) if os.path.isdir(os.path.join(PROJECTS_DIR, f))]
@@ -64,7 +67,6 @@ def generate_pdf(project_name, df, image_folder):
 
     return pdf_output
 
-
 def compress_project(project_name):
     """Comprime el Excel y las imágenes del proyecto en un archivo ZIP dentro de CACHE"""
     zip_filename = os.path.join(CACHE_DIR, f"{project_name}.zip")
@@ -92,6 +94,15 @@ def delete_project(project_name):
     else:
         st.warning(f"El proyecto '{project_name}' no existe.")
         return False
+
+#####################################
+
+# Lista de sugerencias de actividades
+sugerencias =DATA["ACTIVIDAD"]
+
+# Función para mostrar sugerencias basadas en la entrada del usuario
+def mostrar_sugerencias(entrada):
+    return [sug for sug in sugerencias if entrada.lower() in sug.lower()]
 
 
 
@@ -129,13 +140,31 @@ with tab1:
         IMAGE_FOLDER = os.path.join(PROJECT_PATH, "imagenes")
         EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
 
+        ###### INPUTS DE ACTIVIDAD
         placeholder = st.empty()
+        
+        actividad = placeholder.text_input("Nombre de la actividad")
+        
+        # Variable para almacenar la actividad seleccionada
+        actividad_seleccionada = st.session_state.get('actividad_seleccionada', '')
+
+        # Mostrar sugerencias si hay alguna entrada
+        if actividad:
+            with st.expander("Sugerencias:"):
+                #st.write("Sugerencias:")
+                for sug in mostrar_sugerencias(actividad):
+                    if st.button(sug):
+                        actividad_seleccionada = sug
+                        st.session_state['actividad_seleccionada'] = actividad_seleccionada
+                        actividad = placeholder.text_input('Ingresa una actividad:', value=actividad_seleccionada, key=21)
+
+
         placeholder2 = st.empty()
-        actividad = placeholder.text_input("Nombre de la actividad", key="Actividad")
         descripcion = placeholder2.text_area("Descripción",key="Descripcion")
-
         image_files = st.file_uploader("📤 Subir imágenes", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        
 
+        ####### CAMARA Y BOTON DE GUARDAR
         use_camera = st.checkbox("📸 Tomar foto con la cámara")
         if use_camera:
             camera_photo = st.camera_input("Captura de cámara")
@@ -146,7 +175,7 @@ with tab1:
                 st.warning("⚠️ No se ha capturado ninguna imagen.")
 
         if st.button("Guardar"):
-            if actividad and descripcion:
+            if actividad:
                 df = load_or_create_excel(EXCEL_FILE)
 
                 image_paths = []
@@ -161,7 +190,7 @@ with tab1:
 
                 new_data = pd.DataFrame({
                     "Fecha": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                    "Actividad": [actividad],
+                    "Actividad": [actividad_seleccionada],
                     "Descripción": [descripcion],
                     "Imagenes": [images_string]
                 })
@@ -170,12 +199,13 @@ with tab1:
                 df.to_excel(EXCEL_FILE, index=False)
                 st.success("✅ Actividad guardada correctamente!")
                 
+                #Borrar valores
+                actividad = placeholder.text_input('Nombre de la actividad', value='', key=2)
+                descripcion = placeholder2.text_area('Descripción', value='', key=3)
+
             else:
                 st.warning("⚠️ Por favor, completa todos los campos.")
             
-            #Borrar valores
-            actividad = placeholder.text_input('Nombre de la actividad', value='', key=2)
-            descripcion = placeholder2.text_area('Descripción', value='', key=3)
 
 # 🔹 TAB 2: PROYECTOS GUARDADOS (sin cambios)
 with tab2:

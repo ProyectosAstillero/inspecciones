@@ -8,12 +8,12 @@ from PIL import Image
 from io import BytesIO
 import send2trash
 
-        # Definir carpetas base donde se almacenan los proyectos y archivos comprimidos
+# Definir carpetas base donde se almacenan los proyectos y archivos comprimidos
 BASE_DIR = "./"
 PROJECTS_DIR = os.path.join(BASE_DIR, "Proyecto")  # Carpeta donde se crearán los proyectos
 CACHE_DIR = os.path.join(BASE_DIR, "CACHE")  # Carpeta donde se almacenarán los archivos ZIP
 BD = './DATA.xlsx'
-DATA =  pd.read_excel(BD, sheet_name="DATA")
+DATA = pd.read_excel(BD, sheet_name="DATA")
 
 # Crear las carpetas si no existen
 os.makedirs(PROJECTS_DIR, exist_ok=True)
@@ -98,13 +98,11 @@ def delete_project(project_name):
 #####################################
 
 # Lista de sugerencias de actividades
-sugerencias =DATA["ACTIVIDAD"]
+sugerencias = DATA["ACTIVIDAD"]
 
 # Función para mostrar sugerencias basadas en la entrada del usuario
 def mostrar_sugerencias(entrada):
     return [sug for sug in sugerencias if entrada.lower() in sug.lower()]
-
-
 
 # Crear una nueva pestaña para eliminar proyectos
 tab1, tab2, tab3 = st.tabs(["📌 Añadir Actividades", "📂 Proyectos Guardados", "🗑️ Eliminar Proyecto"])
@@ -141,21 +139,28 @@ with tab1:
         EXCEL_FILE = os.path.join(PROJECT_PATH, "actividades.xlsx")
 
         ###### INPUTS DE ACTIVIDAD
+        if 'actividad' not in st.session_state:
+            st.session_state['actividad'] = ''
+
         placeholder = st.empty()
-        
-        actividad = placeholder.text_input("Nombre de la actividad")
-        
+        actividad = placeholder.text_input("Nombre de la actividad", value=st.session_state['actividad'], key='actividad_input')
+
         # Variable para almacenar la actividad seleccionada
         actividad_seleccionada = st.session_state.get('actividad_seleccionada', '')
 
         # Mostrar sugerencias si hay alguna entrada
         if actividad:
-            with st.expander("Sugerencias:"):
-                for sug in mostrar_sugerencias(actividad):
-                    if st.button(sug):
-                        actividad_seleccionada = sug
-                        st.session_state['actividad_seleccionada'] = actividad_seleccionada
-                        actividad = placeholder.text_input('Nombre de la actividad', value=actividad_seleccionada, key=21)
+            sugerencias_filtradas = mostrar_sugerencias(actividad)
+            if len(sugerencias_filtradas) > 10:  # Limitar el número de sugerencias mostradas
+                st.warning("⚠️ Demasiadas coincidencias. Por favor, ingresa una mayor descripción.")
+            else:
+                with st.expander("Sugerencias:"):
+                    for i, sug in enumerate(sugerencias_filtradas):
+                        if st.button(sug, key=f"sug_{i}"):
+                            actividad_seleccionada = sug
+                            st.session_state['actividad_seleccionada'] = actividad_seleccionada
+                            st.session_state['actividad'] = actividad_seleccionada
+                            actividad = placeholder.text_input('Nombre de la actividad', value=actividad_seleccionada, key=21)
 
         placeholder2 = st.empty()
         descripcion = placeholder2.text_area("Descripción", key="Descripcion")
@@ -176,23 +181,37 @@ with tab1:
             if actividad_final:
                 df = load_or_create_excel(EXCEL_FILE)
 
-                image_paths = []
-                if image_files:
-                    for image_file in image_files:
-                        image_path = os.path.join(IMAGE_FOLDER, image_file.name)
-                        with open(image_path, "wb") as f:
-                            f.write(image_file.getbuffer())
-                        image_paths.append(image_path)
+                # Verificar si la actividad ya existe
+                if actividad_final in df["Actividad"].values:
+                    # Actualizar la actividad existente
+                    df.loc[df["Actividad"] == actividad_final, "Descripción"] = descripcion
+                    if image_files:
+                        image_paths = []
+                        for image_file in image_files:
+                            image_path = os.path.join(IMAGE_FOLDER, image_file.name)
+                            with open(image_path, "wb") as f:
+                                f.write(image_file.getbuffer())
+                            image_paths.append(image_path)
+                        images_string = ", ".join(image_paths)
+                        df.loc[df["Actividad"] == actividad_final, "Imagenes"] = images_string
+                else:
+                    # Crear una nueva actividad
+                    image_paths = []
+                    if image_files:
+                        for image_file in image_files:
+                            image_path = os.path.join(IMAGE_FOLDER, image_file.name)
+                            with open(image_path, "wb") as f:
+                                f.write(image_file.getbuffer())
+                            image_paths.append(image_path)
+                    images_string = ", ".join(image_paths) if image_paths else ""
 
-                images_string = ", ".join(image_paths) if image_paths else ""
-
-                new_data = pd.DataFrame({
-                    "Fecha": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                    "Actividad": [actividad_final],
-                    "Descripción": [descripcion],
-                    "Imagenes": [images_string]
-                })
-                df = pd.concat([df, new_data], ignore_index=True)
+                    new_data = pd.DataFrame({
+                        "Fecha": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                        "Actividad": [actividad_final],
+                        "Descripción": [descripcion],
+                        "Imagenes": [images_string]
+                    })
+                    df = pd.concat([df, new_data], ignore_index=True)
 
                 df.to_excel(EXCEL_FILE, index=False)
                 st.success("✅ Actividad guardada correctamente!")

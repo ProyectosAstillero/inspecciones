@@ -151,18 +151,15 @@ with tab1:
         # Mostrar sugerencias si hay alguna entrada
         if actividad:
             with st.expander("Sugerencias:"):
-                #st.write("Sugerencias:")
                 for sug in mostrar_sugerencias(actividad):
                     if st.button(sug):
                         actividad_seleccionada = sug
                         st.session_state['actividad_seleccionada'] = actividad_seleccionada
-                        actividad = placeholder.text_input('Ingresa una actividad:', value=actividad_seleccionada, key=21)
-
+                        actividad = placeholder.text_input('Nombre de la actividad', value=actividad_seleccionada, key=21)
 
         placeholder2 = st.empty()
-        descripcion = placeholder2.text_area("Descripción",key="Descripcion")
+        descripcion = placeholder2.text_area("Descripción", key="Descripcion")
         image_files = st.file_uploader("📤 Subir imágenes", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
-        
 
         ####### CAMARA Y BOTON DE GUARDAR
         use_camera = st.checkbox("📸 Tomar foto con la cámara")
@@ -175,7 +172,8 @@ with tab1:
                 st.warning("⚠️ No se ha capturado ninguna imagen.")
 
         if st.button("Guardar"):
-            if actividad:
+            actividad_final = actividad_seleccionada if actividad_seleccionada else actividad
+            if actividad_final:
                 df = load_or_create_excel(EXCEL_FILE)
 
                 image_paths = []
@@ -190,7 +188,7 @@ with tab1:
 
                 new_data = pd.DataFrame({
                     "Fecha": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                    "Actividad": [actividad_seleccionada],
+                    "Actividad": [actividad_final],
                     "Descripción": [descripcion],
                     "Imagenes": [images_string]
                 })
@@ -199,13 +197,13 @@ with tab1:
                 df.to_excel(EXCEL_FILE, index=False)
                 st.success("✅ Actividad guardada correctamente!")
                 
-                #Borrar valores
+                # Borrar valores
                 actividad = placeholder.text_input('Nombre de la actividad', value='', key=2)
                 descripcion = placeholder2.text_area('Descripción', value='', key=3)
+                st.session_state['actividad_seleccionada'] = ''
 
             else:
-                st.warning("⚠️ Por favor, completa todos los campos.")
-            
+                st.warning("⚠️ Por favor, completa todos los campos.")        
 
 # 🔹 TAB 2: PROYECTOS GUARDADOS (sin cambios)
 with tab2:
